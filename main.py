@@ -14,10 +14,20 @@ if not PINECONE_API_KEY:
 else:
     pc = Pinecone(api_key=PINECONE_API_KEY)
 
-    # Create index if it doesn't exist
-    if INDEX_NAME not in [i.name for i in pc.list_indexes()]:
-        pc.create_index(name=INDEX_NAME, dimension=384, metric="cosine")
+    # Check if index exists
+    existing_indexes = [i.name for i in pc.list_indexes()]
+    
+    # Delete the index if dimensions don't match
+    if INDEX_NAME in existing_indexes:
+        index_info = pc.describe_index(INDEX_NAME)
+        if index_info.dimension != 384:
+            st.warning(f"⚠️ Deleting old index (wrong dimension: {index_info.dimension}) and creating a new one.")
+            pc.delete_index(INDEX_NAME)
 
+    # Create index if it doesn't exist
+    if INDEX_NAME not in existing_indexes:
+        pc.create_index(name=INDEX_NAME, dimension=384, metric="cosine")
+    
     # Connect to the index
     index = pc.Index(INDEX_NAME)
 
@@ -26,8 +36,8 @@ else:
     model = SentenceTransformer(MODEL_NAME)
 
     # Streamlit UI
-    st.title("🔗 URL to Vector Storage")
-    st.write("Enter a URL, extract its content, convert it to embeddings, and store it in Pinecone.")
+    st.title("🔗 URL to Pinecone (Text & Embedding Storage)")
+    st.write("Enter a URL to extract text, store it in Pinecone along with its vector representation.")
 
     url = st.text_input("Enter the URL:")
 
@@ -43,11 +53,17 @@ else:
                 # Generate embedding
                 embedding = model.encode(text)
 
-                # Store in Pinecone
+                # Store in Pinecone (Text + Embedding)
                 doc_id = f"url_{hash(url)}"
-                index.upsert(vectors=[{"id": doc_id, "values": embedding.tolist()}])
+                index.upsert(
+                    vectors=[{
+                        "id": doc_id,
+                        "values": embedding.tolist(),
+                        "metadata": {"url": url, "text": text[:2000]}  # Store first 2000 chars
+                    }]
+                )
 
-                st.success(f"✅ Successfully stored embeddings for {url} in Pinecone!")
+                st.success(f"✅ Successfully stored text & embeddings for {url} in Pinecone!")
             except Exception as e:
                 st.error(f"❌ Error processing URL: {e}")
         else:
