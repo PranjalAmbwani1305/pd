@@ -4,6 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone
+import tiktoken  # For tokenizing text efficiently
 
 # Load Pinecone API Key from Environment Variables
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
@@ -35,9 +36,18 @@ else:
     MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
     model = SentenceTransformer(MODEL_NAME)
 
+    # Function to split text into chunks
+    def chunk_text(text, max_tokens=250):
+        """Splits text into smaller chunks of max_tokens length."""
+        tokenizer = tiktoken.get_encoding("cl100k_base")  # Same as OpenAI tokenizer
+        tokens = tokenizer.encode(text)
+        
+        chunks = [tokens[i:i + max_tokens] for i in range(0, len(tokens), max_tokens)]
+        return [" ".join(tokenizer.decode(chunk).split()) for chunk in chunks]
+
     # Streamlit UI
-    st.title("🔗 URL to Pinecone (Text & Embedding Storage)")
-    st.write("Enter a URL to extract text, store it in Pinecone along with its vector representation.")
+    st.title("🔗 URL to Pinecone (Chunked Text & Embeddings)")
+    st.write("Enter a URL to extract text, split it into chunks, and store in Pinecone.")
 
     url = st.text_input("Enter the URL:")
 
@@ -50,20 +60,24 @@ else:
                 text = soup.get_text()
                 text = " ".join(text.split())  # Clean text
 
-                # Generate embedding
-                embedding = model.encode(text)
+                # Split text into chunks
+                text_chunks = chunk_text(text)
 
-                # Store in Pinecone (Text + Embedding)
-                doc_id = f"url_{hash(url)}"
-                index.upsert(
-                    vectors=[{
-                        "id": doc_id,
-                        "values": embedding.tolist(),
-                        "metadata": {"url": url, "text": text[:2000]}  # Store first 2000 chars
-                    }]
-                )
+                # Generate embeddings and store each chunk
+                vectors = []
+                for i, chunk in enumerate(text_chunks):
+                    embedding = model.encode(chunk).tolist()
+                    chunk_id = f"url_{hash(url)}_chunk_{i}"
+                    
+                    vectors.append({
+                        "id": chunk_id,
+                        "values": embedding,
+                        "metadata": {"url": url, "text": chunk}
+                    })
 
-                st.success(f"✅ Successfully stored text & embeddings for {url} in Pinecone!")
+                index.upsert(vectors=vectors)
+
+                st.success(f"✅ Successfully stored {len(text_chunks)} chunks for {url} in Pinecone!")
             except Exception as e:
                 st.error(f"❌ Error processing URL: {e}")
         else:
