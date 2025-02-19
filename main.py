@@ -21,7 +21,7 @@ def scrape_website(url):
 
 def store_in_pinecone(text, index_name="web-scraper-index"):
     """Stores extracted text embeddings into Pinecone."""
-    pinecone.init(api_key="your-pinecone-api-key", environment="us-west1-gcp")
+    pinecone.init(api_key="pcsk_77tP2W_671WX1BP2SkmMW6WimJR4jnNRigUMzMH8kZy4qdnDHMXQduiPT4EC3CgiTTE9WF", environment="us-east-1")
     index = pinecone.Index(index_name)
     model = SentenceTransformer("all-MiniLM-L6-v2")
     embeddings = model.encode(text.split('\n'))
