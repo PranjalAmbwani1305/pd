@@ -8,7 +8,7 @@ import pinecone
 PINECONE_API_KEY = "pcsk_77tP2W_671WX1BP2SkmMW6WimJR4jnNRigUMzMH8kZy4qdnDHMXQduiPT4EC3CgiTTE9WF"
 INDEX_NAME = "helpdesk"
 
-pinecone.init(api_key=PINECONE_API_KEY, environment="us-west1-gcp")
+pinecone.init(api_key=PINECONE_API_KEY, environment="us-east-1")
 
 if INDEX_NAME not in pinecone.list_indexes():
     pinecone.create_index(INDEX_NAME, dimension=384)  # Adjust based on model output dimension
