@@ -20,7 +20,7 @@ def scrape_website(url):
     except Exception as e:
         return None
 
-def store_in_pinecone(text, index_name="helpdesk"):
+def store_in_pinecone(text, index_name="web-scraper-index"):
     """Stores extracted text embeddings into Pinecone."""
     pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
     
@@ -29,15 +29,21 @@ def store_in_pinecone(text, index_name="helpdesk"):
             name=index_name, 
             dimension=384, 
             metric='cosine',
-            spec=ServerlessSpec(cloud='aws', region='us-east-1')
+            spec=ServerlessSpec(cloud='aws', region='us-west-2')
         )
     
     index = pc.Index(index_name)
     model = SentenceTransformer("all-MiniLM-L6-v2")
-    embeddings = model.encode(text.split('\n'))
+    lines = text.split('\n')
+    embeddings = model.encode(lines)
     
+    upsert_data = []
     for i, emb in enumerate(embeddings):
-        index.upsert([(f"doc_{i}", emb.tolist(), {"text": text.split('\n')[i]})])
+        metadata = {"text": lines[i]} if len(lines[i]) < 500 else {}
+        upsert_data.append((f"doc_{i}", emb.tolist(), metadata))
+    
+    if upsert_data:
+        index.upsert(vectors=upsert_data)
 
 def save_as_pdf(text, filename="scraped_data.pdf"):
     """Saves the extracted text as a PDF."""
