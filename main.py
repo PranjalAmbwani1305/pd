@@ -3,8 +3,8 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
+import numpy as np
 from pinecone import Pinecone
-import tiktoken  # For tokenizing text efficiently
 
 # Load Pinecone API Key from Environment Variables
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
@@ -36,18 +36,15 @@ else:
     MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
     model = SentenceTransformer(MODEL_NAME)
 
-    # Function to split text into chunks
-    def chunk_text(text, max_tokens=250):
-        """Splits text into smaller chunks of max_tokens length."""
-        tokenizer = tiktoken.get_encoding("cl100k_base")  # Same as OpenAI tokenizer
-        tokens = tokenizer.encode(text)
-        
-        chunks = [tokens[i:i + max_tokens] for i in range(0, len(tokens), max_tokens)]
-        return [" ".join(tokenizer.decode(chunk).split()) for chunk in chunks]
+    # Function to split text into small chunks
+    def chunk_text(text, max_words=200):
+        """Splits text into smaller chunks based on word count."""
+        words = text.split()
+        return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
 
     # Streamlit UI
-    st.title("🔗 URL to Pinecone (Chunked Text & Embeddings)")
-    st.write("Enter a URL to extract text, split it into chunks, and store in Pinecone.")
+    st.title("🔗 URL to Pinecone (Chunked Text, Single ID)")
+    st.write("Enter a URL to extract text, split it into chunks, and store in Pinecone under one ID.")
 
     url = st.text_input("Enter the URL:")
 
@@ -63,21 +60,23 @@ else:
                 # Split text into chunks
                 text_chunks = chunk_text(text)
 
-                # Generate embeddings and store each chunk
-                vectors = []
-                for i, chunk in enumerate(text_chunks):
-                    embedding = model.encode(chunk).tolist()
-                    chunk_id = f"url_{hash(url)}_chunk_{i}"
-                    
-                    vectors.append({
-                        "id": chunk_id,
-                        "values": embedding,
-                        "metadata": {"url": url, "text": chunk}
-                    })
+                # Generate embeddings for each chunk
+                embeddings = np.array([model.encode(chunk) for chunk in text_chunks])
 
-                index.upsert(vectors=vectors)
+                # Compute the average embedding to store under one ID
+                avg_embedding = np.mean(embeddings, axis=0).tolist()
 
-                st.success(f"✅ Successfully stored {len(text_chunks)} chunks for {url} in Pinecone!")
+                # Store in Pinecone (Single ID, Metadata contains all chunks)
+                doc_id = f"url_{hash(url)}"
+                index.upsert(
+                    vectors=[{
+                        "id": doc_id,
+                        "values": avg_embedding,
+                        "metadata": {"url": url, "text_chunks": text_chunks}
+                    }]
+                )
+
+                st.success(f"✅ Successfully stored {len(text_chunks)} chunks under one ID for {url} in Pinecone!")
             except Exception as e:
                 st.error(f"❌ Error processing URL: {e}")
         else:
