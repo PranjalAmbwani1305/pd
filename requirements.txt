@@ -4,3 +4,4 @@ beautifulsoup4
 sentence-transformers
 pinecone-client
 pdfkit
+tiktoken
