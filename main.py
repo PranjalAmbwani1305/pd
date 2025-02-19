@@ -2,69 +2,48 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
-import os
-from pinecone import Pinecone, ServerlessSpec
-import pdfkit
+import pinecone
 
-def scrape_website(url):
-    """Scrapes the given website and extracts text content."""
-    try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            paragraphs = soup.find_all('p')
-            text = '\n'.join([p.get_text() for p in paragraphs])
-            return text
-        else:
-            return None
-    except Exception as e:
-        return None
+# Initialize Pinecone
+PINECONE_API_KEY = "pcsk_77tP2W_671WX1BP2SkmMW6WimJR4jnNRigUMzMH8kZy4qdnDHMXQduiPT4EC3CgiTTE9WF"
+INDEX_NAME = "helpdesk"
 
-def store_in_pinecone(text, index_name="helpdesk"):
-    """Stores extracted text embeddings into Pinecone."""
-    pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
-    
-    if index_name not in pc.list_indexes().names():
-        pc.create_index(
-            name=index_name, 
-            dimension=1536, 
-            metric='cosine',
-            spec=ServerlessSpec(cloud='aws', region='us-east-1')
-        )
-    
-    index = pc.Index(index_name)
-    model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")  # 1536-dim model
-    lines = text.split('\n')
-    embeddings = model.encode(lines)
-    
-    upsert_data = []
-    for i, emb in enumerate(embeddings):
-        metadata = {"text": lines[i]} if len(lines[i]) < 500 else {}
-        upsert_data.append((f"doc_{i}", emb.tolist(), metadata))
-    
-    if upsert_data:
-        index.upsert(vectors=upsert_data)
+pinecone.init(api_key=PINECONE_API_KEY, environment="us-west1-gcp")
 
-def save_as_pdf(text, filename="scraped_data.pdf"):
-    """Saves the extracted text as a PDF."""
-    pdfkit.from_string(text, filename)
-    return filename
+if INDEX_NAME not in pinecone.list_indexes():
+    pinecone.create_index(INDEX_NAME, dimension=384)  # Adjust based on model output dimension
 
-st.title("Website Scraper & Pinecone Storage")
-url = st.text_input("Enter website URL:")
-if st.button("Scrape & Store"):
-    with st.spinner("Scraping website..."):
-        text = scrape_website(url)
-        if text:
-            st.success("Website scraped successfully!")
-            st.text_area("Extracted Text:", text, height=300)
-            
-            with st.spinner("Storing in Pinecone..."):
-                store_in_pinecone(text)
-                st.success("Data stored in Pinecone!")
-                
-            pdf_file = save_as_pdf(text)
-            st.success("PDF saved!")
-            st.download_button("Download PDF", data=open(pdf_file, "rb"), file_name="scraped_data.pdf", mime="application/pdf")
-        else:
-            st.error("Failed to scrape website. Check URL.")
+index = pinecone.Index(INDEX_NAME)
+
+# Load embedding model
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+model = SentenceTransformer(MODEL_NAME)
+
+# Streamlit UI
+st.title("🔗 URL to Vector Storage")
+st.write("Enter a URL, and we'll extract its content, convert it to embeddings, and store it in Pinecone.")
+
+url = st.text_input("Enter the URL:")
+
+if st.button("Process URL"):
+    if url:
+        # Extract text from URL
+        try:
+            response = requests.get(url)
+            soup = BeautifulSoup(response.text, "html.parser")
+            text = soup.get_text()
+            text = " ".join(text.split())  # Clean text
+
+            # Generate embedding
+            embedding = model.encode(text)
+
+            # Store in Pinecone
+            doc_id = f"url_{hash(url)}"
+            index.upsert([(doc_id, embedding.tolist())])
+
+            st.success(f"✅ Successfully stored embeddings for {url} in Pinecone!")
+        except Exception as e:
+            st.error(f"❌ Error processing URL: {e}")
+    else:
+        st.warning("⚠️ Please enter a valid URL!")
+
