@@ -2,7 +2,8 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
-import pinecone
+import os
+from pinecone import Pinecone, ServerlessSpec
 import pdfkit
 
 def scrape_website(url):
@@ -21,8 +22,17 @@ def scrape_website(url):
 
 def store_in_pinecone(text, index_name="helpdesk"):
     """Stores extracted text embeddings into Pinecone."""
-    pinecone.init(api_key="pcsk_77tP2W_671WX1BP2SkmMW6WimJR4jnNRigUMzMH8kZy4qdnDHMXQduiPT4EC3CgiTTE9WF", environment="us-east-1")
-    index = pinecone.Index(index_name)
+    pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
+    
+    if index_name not in pc.list_indexes().names():
+        pc.create_index(
+            name=index_name, 
+            dimension=384, 
+            metric='cosine',
+            spec=ServerlessSpec(cloud='aws', region='us-east-1')
+        )
+    
+    index = pc.Index(index_name)
     model = SentenceTransformer("all-MiniLM-L6-v2")
     embeddings = model.encode(text.split('\n'))
     
