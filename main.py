@@ -19,7 +19,7 @@ def scrape_website(url):
     except Exception as e:
         return None
 
-def store_in_pinecone(text, index_name="web-scraper-index"):
+def store_in_pinecone(text, index_name="helpdesk"):
     """Stores extracted text embeddings into Pinecone."""
     pinecone.init(api_key="pcsk_77tP2W_671WX1BP2SkmMW6WimJR4jnNRigUMzMH8kZy4qdnDHMXQduiPT4EC3CgiTTE9WF", environment="us-east-1")
     index = pinecone.Index(index_name)
