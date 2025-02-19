@@ -20,7 +20,7 @@ def scrape_website(url):
     except Exception as e:
         return None
 
-def store_in_pinecone(text, index_name="web-scraper-index"):
+def store_in_pinecone(text, index_name="helpdesk"):
     """Stores extracted text embeddings into Pinecone."""
     pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
     
@@ -29,7 +29,7 @@ def store_in_pinecone(text, index_name="web-scraper-index"):
             name=index_name, 
             dimension=1536, 
             metric='cosine',
-            spec=ServerlessSpec(cloud='aws', region='us-west-2')
+            spec=ServerlessSpec(cloud='aws', region='us-east-1')
         )
     
     index = pc.Index(index_name)
