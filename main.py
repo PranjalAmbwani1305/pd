@@ -8,15 +8,26 @@ import numpy as np
 
 # Load Pinecone API Key
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-index_name = "helpdesk"
-DIMENSION = 768 
+INDEX_NAME = "helpdesk"
+DIMENSION = 786 
 
 if not PINECONE_API_KEY:
     st.error("❌ Pinecone API key is missing.")
     st.stop()
 
 pc = Pinecone(api_key=PINECONE_API_KEY)
-index = pc.Index(index_name)
+
+# Ensure correct index setup
+if INDEX_NAME in [i.name for i in pc.list_indexes()]:
+    index_info = pc.describe_index(INDEX_NAME)
+    if index_info.dimension != DIMENSION:
+        pc.delete_index(INDEX_NAME)
+
+if INDEX_NAME not in [i.name for i in pc.list_indexes()]:
+    pc.create_index(name=INDEX_NAME, dimension=DIMENSION, metric="cosine")
+
+# ✅ Fix: Correct way to initialize the index
+index = pc.Index(name=INDEX_NAME)
 
 # Load embedding model
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
