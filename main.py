@@ -32,28 +32,34 @@ index = pc.Index(INDEX_NAME)
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 def extract_text(url):
-    """Extract text from a given URL."""
+    """Extract and clean text from a given URL."""
     try:
         response = requests.get(url, timeout=10)
         soup = BeautifulSoup(response.text, "html.parser")
         text = " ".join(soup.get_text().split())  # Clean text
-        return text
+        return text if len(text) > 50 else None  # Ignore empty or very short text
     except Exception as e:
         st.error(f"❌ Failed to extract text from {url}: {e}")
         return None
 
 def store_in_pinecone(urls):
-    """Extracts text from URLs and stores embeddings in Pinecone."""
+    """Extracts text from URLs and stores text + embeddings in Pinecone."""
     vectors = []
     for url in urls:
         text = extract_text(url)
         if text:
             embedding = model.encode(text).tolist()
-            vectors.append({"id": f"url_{hash(url)}", "values": embedding, "metadata": {"url": url}})
+            doc_id = f"url_{hash(url)}"
+            
+            vectors.append({
+                "id": doc_id,
+                "values": embedding,
+                "metadata": {"url": url, "text": text[:5000]}  # Store up to 5000 chars
+            })
     
     if vectors:
         index.upsert(vectors)
-        st.success(f"✅ Stored {len(vectors)} URLs in Pinecone!")
+        st.success(f"✅ Stored {len(vectors)} URLs in Pinecone with text!")
 
 # Streamlit UI
 st.title("🔗 URL Text Extractor & Pinecone Storage")
