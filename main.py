@@ -73,8 +73,7 @@ def store_articles_in_pinecone(urls):
                 "metadata": {
                     "url": url,
                     "article": text_chunks  # Full article split into chunks
-                }
-            }]])
+                } }]])
     
     st.success(f"✅ Stored {len(urls)} articles in Pinecone!")
 
