@@ -1,12 +1,15 @@
 import streamlit as st
-import pinecone
+from pinecone import Pinecone
 import uuid
 from sentence_transformers import SentenceTransformer
 import os
 
 # Initialize Pinecone
-pinecone.init(api_key=os.getenv("PINECONE_API_KEY"), environment=os.getenv("PINECONE_ENV"))
-index = pinecone.Index("helpdesk")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+
+pc = Pinecone(api_key=PINECONE_API_KEY)
+index_name = "helpdesk"
+index = pc.Index(index_name)
 
 # Load embedding model
 model = SentenceTransformer("all-MiniLM-L6-v2")
