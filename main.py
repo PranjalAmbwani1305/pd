@@ -59,7 +59,7 @@ def store_articles_in_pinecone(urls):
                     "url": url,
                     "article_text": " ".join(text_chunks)  # Full article as one document
                 }
-            }]])
+            }])
     
     st.success(f"✅ Stored {len(urls)} articles in Pinecone!")
 
