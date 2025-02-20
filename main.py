@@ -7,124 +7,82 @@ import numpy as np
 import PyPDF2
 from pinecone import Pinecone
 
-# Load Pinecone API Key from Environment Variables
+# Load Pinecone API Key
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = "helpdesk"
+DIMENSION = 384  # Embedding size
 
 if not PINECONE_API_KEY:
-    st.error("❌ Pinecone API key is missing. Set it as an environment variable.")
-else:
-    pc = Pinecone(api_key=PINECONE_API_KEY)
+    st.error("❌ Pinecone API key is missing.")
+    st.stop()
 
-    # Check if index exists
-    existing_indexes = [i.name for i in pc.list_indexes()]
+pc = Pinecone(api_key=PINECONE_API_KEY)
+index = pc.Index(INDEX_NAME)
+
+# Ensure correct index dimensions
+if INDEX_NAME in [i.name for i in pc.list_indexes()]:
+    index_info = pc.describe_index(INDEX_NAME)
+    if index_info.dimension != DIMENSION:
+        pc.delete_index(INDEX_NAME)
+
+if INDEX_NAME not in [i.name for i in pc.list_indexes()]:
+    pc.create_index(name=INDEX_NAME, dimension=DIMENSION, metric="cosine")
+
+# Load embedding model
+model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+
+def chunk_text(text, max_words=200):
+    """Split text into chunks of max_words."""
+    words = text.split()
+    return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
+
+def extract_text_from_pdf(pdf_file):
+    """Extract text from a PDF file."""
+    reader = PyPDF2.PdfReader(pdf_file)
+    return " ".join([page.extract_text() for page in reader.pages if page.extract_text()])
+
+def process_and_store(data_list, data_type):
+    """Process multiple URLs/PDFs and store in Pinecone."""
+    vectors = []
+    for data in data_list:
+        try:
+            if data_type == "url":
+                response = requests.get(data)
+                soup = BeautifulSoup(response.text, "html.parser")
+                text = soup.get_text()
+            else:
+                text = extract_text_from_pdf(data)
+            
+            text_chunks = chunk_text(" ".join(text.split()))
+            avg_embedding = np.mean([model.encode(chunk) for chunk in text_chunks], axis=0).tolist()
+            doc_id = f"{data_type}_{hash(data)}"
+            
+            vectors.append({
+                "id": doc_id,
+                "values": avg_embedding,
+                "metadata": {"source": data, "chunks": text_chunks}
+            })
+        except Exception as e:
+            st.error(f"❌ Error processing {data}: {e}")
+
+    if vectors:
+        index.upsert(vectors)
+        st.success(f"✅ Stored {len(vectors)} {data_type}(s) in Pinecone!")
+
+# Streamlit UI
+st.title("📄 Multi PDF & URL Processor")
+st.write("Upload PDFs or enter URLs to store in Pinecone.")
+
+pdfs = st.file_uploader("Upload PDFs", type=["pdf"], accept_multiple_files=True)
+urls = st.text_area("Enter URLs (comma-separated):")
+
+if st.button("Process"):
+    url_list = [url.strip() for url in urls.split(",") if url.strip()]
     
-    # Delete the index if dimensions don't match
-    if INDEX_NAME in existing_indexes:
-        index_info = pc.describe_index(INDEX_NAME)
-        if index_info.dimension != 384:
-            st.warning(f"⚠️ Deleting old index (wrong dimension: {index_info.dimension}) and creating a new one.")
-            pc.delete_index(INDEX_NAME)
+    if pdfs:
+        process_and_store(pdfs, "pdf")
+    if url_list:
+        process_and_store(url_list, "url")
 
-    # Create index if it doesn't exist
-    if INDEX_NAME not in existing_indexes:
-        pc.create_index(name=INDEX_NAME, dimension=384, metric="cosine")
-    
-    # Connect to the index
-    index = pc.Index(INDEX_NAME)
-
-    # Load embedding model
-    MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-    model = SentenceTransformer(MODEL_NAME)
-
-    # Function to split text into small chunks
-    def chunk_text(text, max_words=200):
-        """Splits text into smaller chunks based on word count."""
-        words = text.split()
-        return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
-
-    # Function to extract text from PDF
-    def extract_text_from_pdf(pdf_file):
-        """Extracts text from a PDF file."""
-        pdf_reader = PyPDF2.PdfReader(pdf_file)
-        text = ""
-        for page in pdf_reader.pages:
-            text += page.extract_text() + " "
-        return " ".join(text.split())  # Clean text
-
-    # Streamlit UI
-    st.title("📄 Multi PDF & URL to Pinecone (Single ID per File/URL)")
-    st.write("Upload multiple PDFs or enter multiple URLs (comma-separated) to store them in Pinecone.")
-
-    # File uploader for multiple PDFs
-    uploaded_pdfs = st.file_uploader("Upload PDFs", type=["pdf"], accept_multiple_files=True)
-    
-    # Text input for multiple URLs (comma-separated)
-    urls = st.text_area("Enter URLs (comma-separated):")
-
-    if st.button("Process"):
-        processed_count = 0
-
-        # Process multiple PDFs
-        if uploaded_pdfs:
-            for uploaded_pdf in uploaded_pdfs:
-                try:
-                    # Extract text from PDF
-                    pdf_text = extract_text_from_pdf(uploaded_pdf)
-                    text_chunks = chunk_text(pdf_text)
-
-                    # Generate embeddings
-                    embeddings = np.array([model.encode(chunk) for chunk in text_chunks])
-                    avg_embedding = np.mean(embeddings, axis=0).tolist()
-
-                    # Store in Pinecone under a unique ID
-                    doc_id = f"pdf_{hash(uploaded_pdf.name)}"
-                    index.upsert(
-                        vectors=[{
-                            "id": doc_id,
-                            "values": avg_embedding,
-                            "metadata": {"filename": uploaded_pdf.name, "text_chunks": text_chunks}
-                        }]
-                    )
-
-                    processed_count += 1
-                except Exception as e:
-                    st.error(f"❌ Error processing PDF {uploaded_pdf.name}: {e}")
-
-        # Process multiple URLs
-        if urls:
-            url_list = [url.strip() for url in urls.split(",") if url.strip()]  # Split and clean URLs
-
-            for url in url_list:
-                try:
-                    # Extract text from URL
-                    response = requests.get(url)
-                    soup = BeautifulSoup(response.text, "html.parser")
-                    text = soup.get_text()
-                    text = " ".join(text.split())  # Clean text
-
-                    # Split text into chunks
-                    text_chunks = chunk_text(text)
-
-                    # Generate embeddings
-                    embeddings = np.array([model.encode(chunk) for chunk in text_chunks])
-                    avg_embedding = np.mean(embeddings, axis=0).tolist()
-
-                    # Store in Pinecone under a unique ID
-                    doc_id = f"url_{hash(url)}"
-                    index.upsert(
-                        vectors=[{
-                            "id": doc_id,
-                            "values": avg_embedding,
-                            "metadata": {"url": url, "text_chunks": text_chunks}
-                        }]
-                    )
-
-                    processed_count += 1
-                except Exception as e:
-                    st.error(f"❌ Error processing URL {url}: {e}")
-
-        if processed_count > 0:
-            st.success(f"✅ Successfully stored {processed_count} files/URLs in Pinecone!")
-        else:
-            st.warning("⚠️ No valid URLs or PDFs processed.")
+    if not pdfs and not url_list:
+        st.warning("⚠️ No valid URLs or PDFs provided.")
