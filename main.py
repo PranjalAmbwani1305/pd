@@ -6,10 +6,10 @@ from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone
 import numpy as np
 
-# Load Pinecone API Key
+# Load API Key
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = "helpdesk"
-DIMENSION = 384  # Matching the model dimension
+DIMENSION = 786  # Match the Pinecone index
 
 if not PINECONE_API_KEY:
     st.error("❌ Pinecone API key is missing.")
@@ -19,8 +19,9 @@ if not PINECONE_API_KEY:
 pc = Pinecone(api_key=PINECONE_API_KEY)
 index = pc.Index(INDEX_NAME)
 
-# Load embedding model
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+# ✅ Load a 786-dimensional embedding model
+MODEL_NAME = "BAAI/bge-large-en"
+model = SentenceTransformer(MODEL_NAME)
 
 def extract_text(url):
     """Extract and clean text from a given URL."""
