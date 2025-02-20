@@ -9,7 +9,7 @@ import numpy as np
 # Load Pinecone API Key
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = "helpdesk"
-DIMENSION = 384  # Matching the model dimension
+DIMENSION = 786  # Matching the model dimension
 
 if not PINECONE_API_KEY:
     st.error("❌ Pinecone API key is missing.")
