@@ -5,6 +5,7 @@ from pinecone import Pinecone
 import uuid
 from sentence_transformers import SentenceTransformer
 import os
+import re
 
 # Initialize Pinecone
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
@@ -16,10 +17,10 @@ index = pc.Index(index_name)
 # Load embedding model
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-def chunk_text(text, chunk_size=500):
-    """Splits text into meaningful paragraphs instead of fixed-size chunks."""
-    paragraphs = text.split("\n\n")  # Splitting by double newlines for structured text
-    return [para.strip() for para in paragraphs if len(para.strip()) > 50]  # Remove short/noise text
+def chunk_text(text):
+    """Splits text based on law article numbers (e.g., 'Article 1:', 'Article 2:')."""
+    articles = re.split(r'(?i)(?=Article \d+[:\.])', text)  # Splitting by 'Article X:' pattern
+    return [article.strip() for article in articles if len(article.strip()) > 50]  # Remove short/noise text
 
 def store_in_pinecone(text_chunks):
     """Stores text chunks in Pinecone."""
@@ -53,6 +54,6 @@ if st.button("Store in Pinecone"):
     if user_input:
         chunks = chunk_text(user_input)
         store_in_pinecone(chunks)
-        st.success(f"Stored {len(chunks)} structured paragraphs in Pinecone!")
+        st.success(f"Stored {len(chunks)} structured articles in Pinecone!")
     else:
         st.error("Please enter a valid URL or some text.")
