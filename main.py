@@ -49,26 +49,28 @@ def chunk_text(text, max_words=100):
     return chunks
 
 def store_in_pinecone(urls):
-    """Extracts text from URLs, splits into chunks, and stores embeddings in Pinecone."""
+    """Extracts text from URLs, chunks it, and stores all chunks together under one ID."""
     vectors = []
     for url in urls:
         text = extract_text(url)
         if text:
             text_chunks = chunk_text(text)
+            combined_text = " ||| ".join(text_chunks)  # Combine chunks with a separator
             
-            for i, chunk in enumerate(text_chunks):
-                embedding = model.encode(chunk).tolist()
-                chunk_id = f"url_{hash(url)}_chunk_{i}"  # Unique ID for each chunk
-                
-                vectors.append({
-                    "id": chunk_id,
-                    "values": embedding,
-                    "metadata": {"url": url, "chunk_index": i, "text": chunk}
-                })
+            # Generate a single embedding for all chunks combined
+            avg_embedding = model.encode(combined_text).tolist()
+            
+            doc_id = f"url_{hash(url)}"  # Single ID for the whole document
+            
+            vectors.append({
+                "id": doc_id,
+                "values": avg_embedding,
+                "metadata": {"url": url, "chunks": text_chunks}
+            })
     
     if vectors:
         index.upsert(vectors)
-        st.success(f"✅ Stored {len(vectors)} text chunks from {len(urls)} URLs in Pinecone!")
+        st.success(f"✅ Stored {len(vectors)} URLs in Pinecone with all chunks combined!")
 
 # Streamlit UI
 st.title("🔗 URL Text Extractor & Pinecone Storage")
