@@ -8,27 +8,12 @@ import numpy as np
 
 # Load Pinecone API Key
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = "helpdesk"
-DIMENSION = 384  
+index_name = "helpdesk"
+DIMENSION = 786
 
-if not PINECONE_API_KEY:
-    st.error("❌ Pinecone API key is missing.")
-    st.stop()
-
-# Initialize Pinecone client
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
-# Ensure correct index setup
-if INDEX_NAME in [i.name for i in pc.list_indexes()]:
-    index_info = pc.describe_index(INDEX_NAME)
-    if index_info.dimension != DIMENSION:
-        pc.delete_index(INDEX_NAME)
-
-if INDEX_NAME not in [i.name for i in pc.list_indexes()]:
-    pc.create_index(name=INDEX_NAME, dimension=DIMENSION, metric="cosine")
-
-# ✅ Correct way to initialize the index
-index = pc.Index(INDEX_NAME)
+index = pc.Index(index_name)
 
 # Load embedding model
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
@@ -50,38 +35,37 @@ def chunk_text(text, max_words=100):
     chunks = [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
     return chunks
 
-def store_articles_in_pinecone(urls):
-    """Extracts text, chunks it, and stores each article as a structured document in Pinecone."""
+def store_in_pinecone(urls):
+    """Extracts text from URLs, chunks it, and stores all chunks together under one ID."""
+    vectors = []
     for url in urls:
         text = extract_text(url)
         if text:
             text_chunks = chunk_text(text)
+            combined_text = " ||| ".join(text_chunks)  # Combine chunks with a separator
             
-            # Generate an embedding for the whole article
-            avg_embedding = model.encode(" ".join(text_chunks)).tolist()
+            # Generate a single embedding for all chunks combined
+            avg_embedding = model.encode(combined_text).tolist()
             
-            doc_id = f"url_{hash(url)}"  # Single ID for the article
+            doc_id = f"url_{hash(url)}"  # Single ID for the whole document
             
-            # Store each article with structured chunks in metadata
-            index.upsert([{
+            vectors.append({
                 "id": doc_id,
                 "values": avg_embedding,
-                "metadata": {
-                    "url": url,
-                    "article": text_chunks  # Full article split into chunks
-                }
-            }])
+                "metadata": {"url": url, "chunks": text_chunks}
+            })
     
-    st.success(f"✅ Stored {len(urls)} articles in Pinecone!")
+    if vectors:
+        index.upsert(vectors)
+        st.success(f"✅ Stored {len(vectors)} URLs in Pinecone with all chunks combined!")
 
 # Streamlit UI
-st.title("📚 Article Extractor & Pinecone Storage")
-urls = st.text_area("Enter article URLs (comma-separated):")
+st.title("🔗 URL Text Extractor & Pinecone Storage")
+urls = st.text_area("Enter URLs (comma-separated):")
 
-if st.button("Process Articles"):
+if st.button("Process URLs"):
     url_list = [url.strip() for url in urls.split(",") if url.strip()]
     if url_list:
-        store_articles_in_pinecone(url_list)
+        store_in_pinecone(url_list)
     else:
         st.warning("⚠️ Please enter at least one valid URL.")
-
