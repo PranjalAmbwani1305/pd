@@ -42,24 +42,33 @@ def extract_text(url):
         st.error(f"❌ Failed to extract text from {url}: {e}")
         return None
 
+def chunk_text(text, max_words=100):
+    """Split text into meaningful chunks of max_words words each."""
+    words = text.split()
+    chunks = [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
+    return chunks
+
 def store_in_pinecone(urls):
-    """Extracts text from URLs and stores text + embeddings in Pinecone."""
+    """Extracts text from URLs, splits into chunks, and stores embeddings in Pinecone."""
     vectors = []
     for url in urls:
         text = extract_text(url)
         if text:
-            embedding = model.encode(text).tolist()
-            doc_id = f"url_{hash(url)}"
+            text_chunks = chunk_text(text)
             
-            vectors.append({
-                "id": doc_id,
-                "values": embedding,
-                "metadata": {"url": url, "text": text[:5000]}  # Store up to 5000 chars
-            })
+            for i, chunk in enumerate(text_chunks):
+                embedding = model.encode(chunk).tolist()
+                chunk_id = f"url_{hash(url)}_chunk_{i}"  # Unique ID for each chunk
+                
+                vectors.append({
+                    "id": chunk_id,
+                    "values": embedding,
+                    "metadata": {"url": url, "chunk_index": i, "text": chunk}
+                })
     
     if vectors:
         index.upsert(vectors)
-        st.success(f"✅ Stored {len(vectors)} URLs in Pinecone with text!")
+        st.success(f"✅ Stored {len(vectors)} text chunks from {len(urls)} URLs in Pinecone!")
 
 # Streamlit UI
 st.title("🔗 URL Text Extractor & Pinecone Storage")
