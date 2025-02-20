@@ -8,7 +8,7 @@ import numpy as np
 
 # Load Pinecone API Key
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = "helpdesk"
+index_name = "helpdesk"
 DIMENSION = 768 
 
 if not PINECONE_API_KEY:
@@ -16,7 +16,7 @@ if not PINECONE_API_KEY:
     st.stop()
 
 pc = Pinecone(api_key=PINECONE_API_KEY)
-index = pc.Index(INDEX_NAME)
+index = pc.Index(index_name)
 
 # Load embedding model
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
