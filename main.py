@@ -4,6 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
 import numpy as np
+import PyPDF2
 from pinecone import Pinecone
 
 # Load Pinecone API Key from Environment Variables
@@ -42,14 +43,51 @@ else:
         words = text.split()
         return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
 
+    # Function to extract text from PDF
+    def extract_text_from_pdf(pdf_file):
+        """Extracts text from a PDF file."""
+        pdf_reader = PyPDF2.PdfReader(pdf_file)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + " "
+        return " ".join(text.split())  # Clean text
+
     # Streamlit UI
-    st.title("🔗 URL to Pinecone (Chunked Text, Single ID)")
-    st.write("Enter a URL to extract text, split it into chunks, and store in Pinecone under one ID.")
+    st.title("📄 PDF & URL to Pinecone (Single ID Storage)")
+    st.write("Upload a PDF or enter a URL to extract text, split it into chunks, and store it in Pinecone under one ID.")
 
-    url = st.text_input("Enter the URL:")
+    # File uploader for PDFs
+    uploaded_pdf = st.file_uploader("Upload a PDF", type=["pdf"])
+    
+    # Text input for URL
+    url = st.text_input("Or enter a URL:")
 
-    if st.button("Process URL"):
-        if url:
+    if st.button("Process"):
+        if uploaded_pdf:
+            try:
+                # Extract text from PDF
+                pdf_text = extract_text_from_pdf(uploaded_pdf)
+                text_chunks = chunk_text(pdf_text)
+
+                # Generate embeddings
+                embeddings = np.array([model.encode(chunk) for chunk in text_chunks])
+                avg_embedding = np.mean(embeddings, axis=0).tolist()
+
+                # Store in Pinecone under a single ID
+                doc_id = f"pdf_{hash(uploaded_pdf.name)}"
+                index.upsert(
+                    vectors=[{
+                        "id": doc_id,
+                        "values": avg_embedding,
+                        "metadata": {"filename": uploaded_pdf.name, "text_chunks": text_chunks}
+                    }]
+                )
+
+                st.success(f"✅ Successfully stored {len(text_chunks)} chunks from {uploaded_pdf.name} under one ID in Pinecone!")
+            except Exception as e:
+                st.error(f"❌ Error processing PDF: {e}")
+
+        elif url:
             try:
                 # Extract text from URL
                 response = requests.get(url)
@@ -60,13 +98,11 @@ else:
                 # Split text into chunks
                 text_chunks = chunk_text(text)
 
-                # Generate embeddings for each chunk
+                # Generate embeddings
                 embeddings = np.array([model.encode(chunk) for chunk in text_chunks])
-
-                # Compute the average embedding to store under one ID
                 avg_embedding = np.mean(embeddings, axis=0).tolist()
 
-                # Store in Pinecone (Single ID, Metadata contains all chunks)
+                # Store in Pinecone under a single ID
                 doc_id = f"url_{hash(url)}"
                 index.upsert(
                     vectors=[{
@@ -79,5 +115,6 @@ else:
                 st.success(f"✅ Successfully stored {len(text_chunks)} chunks under one ID for {url} in Pinecone!")
             except Exception as e:
                 st.error(f"❌ Error processing URL: {e}")
+
         else:
-            st.warning("⚠️ Please enter a valid URL!")
+            st.warning("⚠️ Please upload a PDF or enter a URL!")
