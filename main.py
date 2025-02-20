@@ -1,76 +1,34 @@
-import os
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
+import pinecone
+import uuid
 from sentence_transformers import SentenceTransformer
-from pinecone import Pinecone
-import numpy as np
+import os
 
-# Load API Key
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = "helpdesk"
-DIMENSION = 786
+# Initialize Pinecone
+pinecone.init(api_key=os.getenv("PINECONE_API_KEY"), environment=os.getenv("PINECONE_ENV"))
+index = pinecone.Index("helpdesk")
 
-if not PINECONE_API_KEY:
-    st.error("❌ Pinecone API key is missing.")
-    st.stop()
+# Load embedding model
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# ✅ Initialize Pinecone
-pc = Pinecone(api_key=PINECONE_API_KEY)
-index = pc.Index(INDEX_NAME)
+def chunk_text(text, chunk_size=100):
+    """Splits text into chunks of a given size."""
+    return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
 
-# ✅ Load a 786-dimensional embedding model
-MODEL_NAME = "BAAI/bge-large-en"
-model = SentenceTransformer(MODEL_NAME)
-
-def extract_text(url):
-    """Extract and clean text from a given URL."""
-    try:
-        response = requests.get(url, timeout=10)
-        soup = BeautifulSoup(response.text, "html.parser")
-        text = " ".join(soup.get_text().split())  # Clean text
-        return text if len(text) > 50 else None  # Ignore empty or very short text
-    except Exception as e:
-        st.error(f"❌ Failed to extract text from {url}: {e}")
-        return None
-
-def chunk_text(text, max_words=100):
-    """Split text into meaningful chunks of max_words words each."""
-    words = text.split()
-    chunks = [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
-    return chunks
-
-def store_articles_in_pinecone(urls):
-    """Extracts text, chunks it, and stores each article in Pinecone as a single document."""
-    for url in urls:
-        text = extract_text(url)
-        if text:
-            text_chunks = chunk_text(text)
-            
-            # Generate an embedding for the full article
-            article_embedding = model.encode(" ".join(text_chunks)).tolist()
-            
-            doc_id = f"url_{hash(url)}"  # Single ID for the article
-            
-            # Store the article in Pinecone
-            index.upsert([{
-                "id": doc_id,
-                "values": article_embedding,
-                "metadata": {
-                    "url": url,
-                    "article_text": " ".join(text_chunks)  # Full article as one document
-                }
-            }])
-    
-    st.success(f"✅ Stored {len(urls)} articles in Pinecone!")
+def store_in_pinecone(text_chunks):
+    """Stores text chunks in Pinecone."""
+    vectors = [(str(uuid.uuid4()), model.encode(chunk).tolist(), {"text": chunk}) for chunk in text_chunks]
+    index.upsert(vectors)
 
 # Streamlit UI
-st.title("📚 Article Extractor & Pinecone Storage")
-urls = st.text_area("Enter article URLs (comma-separated):")
+st.title("Pinecone Chunk Storage")
+user_input = st.text_area("Enter your text:")
+chunk_size = st.slider("Chunk Size", 50, 500, 100)
 
-if st.button("Process Articles"):
-    url_list = [url.strip() for url in urls.split(",") if url.strip()]
-    if url_list:
-        store_articles_in_pinecone(url_list)
+if st.button("Store in Pinecone"):
+    if user_input:
+        chunks = chunk_text(user_input, chunk_size)
+        store_in_pinecone(chunks)
+        st.success(f"Stored {len(chunks)} chunks in Pinecone!")
     else:
-        st.warning("⚠️ Please enter at least one valid URL.")
+        st.error("Please enter some text.")
