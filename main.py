@@ -3,23 +3,21 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
-import numpy as np
-import PyPDF2
 from pinecone import Pinecone
+import numpy as np
 
 # Load Pinecone API Key
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = "helpdesk"
-DIMENSION = 384  # Embedding size
+DIMENSION = 384  
 
 if not PINECONE_API_KEY:
     st.error("❌ Pinecone API key is missing.")
     st.stop()
 
 pc = Pinecone(api_key=PINECONE_API_KEY)
-index = pc.Index(INDEX_NAME)
 
-# Ensure correct index dimensions
+# Ensure correct index setup
 if INDEX_NAME in [i.name for i in pc.list_indexes()]:
     index_info = pc.describe_index(INDEX_NAME)
     if index_info.dimension != DIMENSION:
@@ -28,61 +26,42 @@ if INDEX_NAME in [i.name for i in pc.list_indexes()]:
 if INDEX_NAME not in [i.name for i in pc.list_indexes()]:
     pc.create_index(name=INDEX_NAME, dimension=DIMENSION, metric="cosine")
 
+index = pc.Index(INDEX_NAME)
+
 # Load embedding model
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
-def chunk_text(text, max_words=200):
-    """Split text into chunks of max_words."""
-    words = text.split()
-    return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
+def extract_text(url):
+    """Extract text from a given URL."""
+    try:
+        response = requests.get(url, timeout=10)
+        soup = BeautifulSoup(response.text, "html.parser")
+        text = " ".join(soup.get_text().split())  # Clean text
+        return text
+    except Exception as e:
+        st.error(f"❌ Failed to extract text from {url}: {e}")
+        return None
 
-def extract_text_from_pdf(pdf_file):
-    """Extract text from a PDF file."""
-    reader = PyPDF2.PdfReader(pdf_file)
-    return " ".join([page.extract_text() for page in reader.pages if page.extract_text()])
-
-def process_and_store(data_list, data_type):
-    """Process multiple URLs/PDFs and store in Pinecone."""
+def store_in_pinecone(urls):
+    """Extracts text from URLs and stores embeddings in Pinecone."""
     vectors = []
-    for data in data_list:
-        try:
-            if data_type == "url":
-                response = requests.get(data)
-                soup = BeautifulSoup(response.text, "html.parser")
-                text = soup.get_text()
-            else:
-                text = extract_text_from_pdf(data)
-            
-            text_chunks = chunk_text(" ".join(text.split()))
-            avg_embedding = np.mean([model.encode(chunk) for chunk in text_chunks], axis=0).tolist()
-            doc_id = f"{data_type}_{hash(data)}"
-            
-            vectors.append({
-                "id": doc_id,
-                "values": avg_embedding,
-                "metadata": {"source": data, "chunks": text_chunks}
-            })
-        except Exception as e:
-            st.error(f"❌ Error processing {data}: {e}")
-
+    for url in urls:
+        text = extract_text(url)
+        if text:
+            embedding = model.encode(text).tolist()
+            vectors.append({"id": f"url_{hash(url)}", "values": embedding, "metadata": {"url": url}})
+    
     if vectors:
         index.upsert(vectors)
-        st.success(f"✅ Stored {len(vectors)} {data_type}(s) in Pinecone!")
+        st.success(f"✅ Stored {len(vectors)} URLs in Pinecone!")
 
 # Streamlit UI
-st.title("📄 Multi PDF & URL Processor")
-st.write("Upload PDFs or enter URLs to store in Pinecone.")
-
-pdfs = st.file_uploader("Upload PDFs", type=["pdf"], accept_multiple_files=True)
+st.title("🔗 URL Text Extractor & Pinecone Storage")
 urls = st.text_area("Enter URLs (comma-separated):")
 
-if st.button("Process"):
+if st.button("Process URLs"):
     url_list = [url.strip() for url in urls.split(",") if url.strip()]
-    
-    if pdfs:
-        process_and_store(pdfs, "pdf")
     if url_list:
-        process_and_store(url_list, "url")
-
-    if not pdfs and not url_list:
-        st.warning("⚠️ No valid URLs or PDFs provided.")
+        store_in_pinecone(url_list)
+    else:
+        st.warning("⚠️ Please enter at least one valid URL.")
