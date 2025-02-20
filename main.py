@@ -17,15 +17,6 @@ if not PINECONE_API_KEY:
 
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
-# Ensure correct index setup
-if INDEX_NAME in [i.name for i in pc.list_indexes()]:
-    index_info = pc.describe_index(INDEX_NAME)
-    if index_info.dimension != DIMENSION:
-        pc.delete_index(INDEX_NAME)
-
-if INDEX_NAME not in [i.name for i in pc.list_indexes()]:
-    pc.create_index(name=INDEX_NAME, dimension=DIMENSION, metric="cosine")
-
 index = pc.Index(INDEX_NAME)
 
 # Load embedding model
