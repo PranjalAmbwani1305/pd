@@ -1,4 +1,6 @@
 import streamlit as st
+import requests
+from bs4 import BeautifulSoup
 from pinecone import Pinecone
 import uuid
 from sentence_transformers import SentenceTransformer
@@ -25,10 +27,15 @@ def store_in_pinecone(text_chunks):
 
 # Streamlit UI
 st.title("Pinecone Chunk Storage")
-user_input = st.text_area("Enter your text:")
+url_input = st.text_input("Enter URL:")
+user_input = st.text_area("Or enter your text:")
 chunk_size = st.slider("Chunk Size", 50, 500, 100)
 
 if st.button("Store in Pinecone"):
+    if url_input:
+        response = requests.get(url_input)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        user_input = soup.get_text()
     if user_input:
         chunks = chunk_text(user_input, chunk_size)
         store_in_pinecone(chunks)
