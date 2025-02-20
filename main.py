@@ -9,29 +9,14 @@ import numpy as np
 # Load Pinecone API Key
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = "helpdesk"
-DIMENSION = 768  # Matching the model dimension
+DIMENSION = 384  # Matching the model dimension
 
 if not PINECONE_API_KEY:
     st.error("❌ Pinecone API key is missing.")
     st.stop()
 
-# ✅ Initialize Pinecone client
+# ✅ Correct Pinecone initialization
 pc = Pinecone(api_key=PINECONE_API_KEY)
-
-# ✅ List existing indexes and check if our index exists
-existing_indexes = [index.name for index in pc.list_indexes()]
-
-if INDEX_NAME in existing_indexes:
-    index_info = pc.describe_index(INDEX_NAME)
-    if index_info.dimension != DIMENSION:
-        st.warning(f"⚠️ Index dimension mismatch! Deleting and recreating {INDEX_NAME}.")
-        pc.delete_index(INDEX_NAME)
-
-# ✅ Create index if it doesn’t exist
-if INDEX_NAME not in existing_indexes:
-    pc.create_index(name=INDEX_NAME, dimension=DIMENSION, metric="cosine")
-
-# ✅ Correct way to initialize Pinecone index
 index = pc.Index(INDEX_NAME)
 
 # Load embedding model
@@ -73,7 +58,8 @@ def store_articles_in_pinecone(urls):
                 "metadata": {
                     "url": url,
                     "article": text_chunks  # Full article split into chunks
-                } }])
+                }
+            }]])
     
     st.success(f"✅ Stored {len(urls)} articles in Pinecone!")
 
