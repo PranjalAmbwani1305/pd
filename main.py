@@ -8,16 +8,16 @@ import numpy as np
 
 # Load Pinecone API Key
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-index_name = "helpdesk"
-DIMENSION = 786  # Matching the model dimension
+INDEX_NAME = "helpdesk"
+DIMENSION = 384  # Matching the model dimension
 
 if not PINECONE_API_KEY:
     st.error("❌ Pinecone API key is missing.")
     st.stop()
 
-# ✅ Correct Pinecone initialization
+# ✅ Initialize Pinecone
 pc = Pinecone(api_key=PINECONE_API_KEY)
-index = pc.Index(index_name)
+index = pc.Index(INDEX_NAME)
 
 # Load embedding model
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
@@ -40,26 +40,26 @@ def chunk_text(text, max_words=100):
     return chunks
 
 def store_articles_in_pinecone(urls):
-    """Extracts text, chunks it, and stores each article in Pinecone as a structured document."""
+    """Extracts text, chunks it, and stores each article in Pinecone as a single document."""
     for url in urls:
         text = extract_text(url)
         if text:
             text_chunks = chunk_text(text)
             
-            # Generate an embedding for the whole article
-            avg_embedding = model.encode(" ".join(text_chunks)).tolist()
+            # Generate an embedding for the full article
+            article_embedding = model.encode(" ".join(text_chunks)).tolist()
             
             doc_id = f"url_{hash(url)}"  # Single ID for the article
             
-            # Store each article with structured chunks in metadata
+            # Store the article in Pinecone
             index.upsert([{
                 "id": doc_id,
-                "values": avg_embedding,
+                "values": article_embedding,
                 "metadata": {
                     "url": url,
-                    "article": text_chunks  # Full article split into chunks
+                    "article_text": " ".join(text_chunks)  # Full article as one document
                 }
-            }])
+            }]])
     
     st.success(f"✅ Stored {len(urls)} articles in Pinecone!")
 
