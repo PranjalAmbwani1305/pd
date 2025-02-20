@@ -9,23 +9,13 @@ import numpy as np
 # Load Pinecone API Key
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = "helpdesk"
-DIMENSION = 384  
+DIMENSION = 768 
 
 if not PINECONE_API_KEY:
     st.error("❌ Pinecone API key is missing.")
     st.stop()
 
 pc = Pinecone(api_key=PINECONE_API_KEY)
-
-# Ensure correct index setup
-if INDEX_NAME in [i.name for i in pc.list_indexes()]:
-    index_info = pc.describe_index(INDEX_NAME)
-    if index_info.dimension != DIMENSION:
-        pc.delete_index(INDEX_NAME)
-
-if INDEX_NAME not in [i.name for i in pc.list_indexes()]:
-    pc.create_index(name=INDEX_NAME, dimension=DIMENSION, metric="cosine")
-
 index = pc.Index(INDEX_NAME)
 
 # Load embedding model
